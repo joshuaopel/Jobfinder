@@ -1,0 +1,59 @@
+name: Scrape Jobs
+
+on:
+  schedule:
+    # Runs every day at 7 AM UTC (2 AM Dallas time)
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual run'
+        required: false
+        default: 'Manual refresh'
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    name: Scrape & update job listings
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r scraper/requirements.txt
+
+      - name: Run scraper
+        run: python scraper/scrape.py
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git diff --quiet data/jobs.json || echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit & push updated jobs
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/jobs.json
+          COUNT=$(python -c "import json; d=json.load(open('data/jobs.json')); print(d['job_count'])")
+          git commit -m "chore: update job listings — ${COUNT} jobs ($(date -u '+%Y-%m-%d'))"
+          git push origin HEAD
+
+      - name: No changes
+        if: steps.changes.outputs.changed != 'true'
+        run: echo "No new jobs found — jobs.json unchanged."

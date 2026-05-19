@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobFinder — Creative & AI Jobs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="noise"></div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon">◈</div>
+        <div>
+          <h1 class="brand-name">JobFinder</h1>
+          <p class="brand-sub">Creative · AI · Game Dev · Film — Remote &amp; Dallas</p>
+        </div>
+      </div>
+      <div class="header-center">
+        <div class="search-wrap">
+          <span class="search-icon">⌕</span>
+          <input id="search-input" type="text" class="search-input" placeholder="Search jobs, companies..." />
+          <kbd class="search-kbd">⌘K</kbd>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="last-updated" id="last-updated">Checking for jobs…</div>
+        <button class="btn-refresh" id="btn-refresh" onclick="App.refresh()">
+          <span class="refresh-icon" id="refresh-icon">↻</span>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main layout -->
+  <div class="layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <label class="section-label">MY SKILLS</label>
+        <p class="section-hint">Enter skills to calculate match %</p>
+        <div class="tag-input-wrap" id="skills-wrap">
+          <div class="tags-container" id="skills-tags"></div>
+          <input id="skills-input" type="text" class="tag-input" placeholder="Add skill, press Enter…" />
+        </div>
+        <div class="preset-chips" id="skill-presets">
+          <span class="preset-label">Quick add:</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label class="section-label">TARGET TITLES</label>
+        <p class="section-hint">Job titles you're targeting</p>
+        <div class="tag-input-wrap" id="titles-wrap">
+          <div class="tags-container" id="titles-tags"></div>
+          <input id="titles-input" type="text" class="tag-input" placeholder="Add title, press Enter…" />
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label class="section-label">CATEGORY</label>
+        <div class="filter-group" id="category-filters">
+          <label class="filter-item">
+            <input type="checkbox" value="game_dev" checked /> Game Dev
+            <span class="filter-count" id="count-game_dev">0</span>
+          </label>
+          <label class="filter-item">
+            <input type="checkbox" value="ai_tech" checked /> AI / Tech
+            <span class="filter-count" id="count-ai_tech">0</span>
+          </label>
+          <label class="filter-item">
+            <input type="checkbox" value="film" checked /> Film &amp; Animation
+            <span class="filter-count" id="count-film">0</span>
+          </label>
+          <label class="filter-item">
+            <input type="checkbox" value="creative" checked /> Creative &amp; Design
+            <span class="filter-count" id="count-creative">0</span>
+          </label>
+          <label class="filter-item">
+            <input type="checkbox" value="other" checked /> Other
+            <span class="filter-count" id="count-other">0</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label class="section-label">LOCATION</label>
+        <div class="radio-group" id="location-filter">
+          <label class="radio-item">
+            <input type="radio" name="location" value="all" checked /> All Locations
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="location" value="remote" /> Remote Only
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="location" value="dallas" /> Dallas / TX
+          </label>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label class="section-label">SORT BY</label>
+        <div class="radio-group" id="sort-filter">
+          <label class="radio-item">
+            <input type="radio" name="sort" value="score" checked /> Best Match
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="sort" value="date" /> Most Recent
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="sort" value="company" /> Company A–Z
+          </label>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label class="section-label">MIN MATCH %</label>
+        <div class="range-wrap">
+          <input type="range" id="min-score" min="0" max="90" value="0" step="5" class="range-input" />
+          <div class="range-labels">
+            <span>Any</span>
+            <span id="min-score-label">0%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label class="section-label">SOURCES</label>
+        <div id="source-stats" class="source-stats"></div>
+      </div>
+
+      <button class="btn-reset" onclick="App.resetFilters()">↺ Reset All Filters</button>
+    </aside>
+
+    <!-- Jobs panel -->
+    <main class="jobs-panel">
+      <div class="jobs-toolbar">
+        <div class="result-count" id="result-count">Loading…</div>
+        <div class="category-tabs" id="category-tabs">
+          <button class="tab active" data-tab="all">All</button>
+          <button class="tab" data-tab="game_dev">🎮 Game Dev</button>
+          <button class="tab" data-tab="ai_tech">🤖 AI / Tech</button>
+          <button class="tab" data-tab="film">🎬 Film</button>
+          <button class="tab" data-tab="creative">✨ Creative</button>
+        </div>
+        <div class="view-toggle">
+          <button class="view-btn active" id="view-grid" onclick="App.setView('grid')">⊞</button>
+          <button class="view-btn" id="view-list" onclick="App.setView('list')">☰</button>
+        </div>
+      </div>
+
+      <div id="jobs-container" class="jobs-grid"></div>
+
+      <div id="empty-state" class="empty-state" style="display:none">
+        <div class="empty-icon">◌</div>
+        <h2>No jobs found</h2>
+        <p>Try adjusting your filters, or click <strong>Refresh</strong> to scrape fresh listings.</p>
+      </div>
+
+      <div id="loading-state" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading job listings…</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Job detail modal -->
+  <div id="modal-overlay" class="modal-overlay" onclick="App.closeModal()"></div>
+  <div id="job-modal" class="job-modal">
+    <button class="modal-close" onclick="App.closeModal()">✕</button>
+    <div id="modal-content"></div>
+  </div>
+
+  <!-- Scraper info panel -->
+  <div id="scraper-info" class="scraper-info" style="display:none">
+    <div class="scraper-info-inner">
+      <h3>🔧 Trigger Manual Scrape</h3>
+      <p>Jobs are automatically refreshed daily via GitHub Actions. To trigger a manual scrape:</p>
+      <ol>
+        <li>Go to your repo's <strong>Actions</strong> tab on GitHub</li>
+        <li>Click <strong>"Scrape Jobs"</strong> workflow</li>
+        <li>Click <strong>"Run workflow"</strong></li>
+      </ol>
+      <button onclick="document.getElementById('scraper-info').style.display='none'" class="btn-close-info">Got it</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

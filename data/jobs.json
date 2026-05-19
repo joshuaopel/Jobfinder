@@ -1,0 +1,7 @@
+{
+  "last_updated": null,
+  "job_count": 0,
+  "sources": {},
+  "jobs": [],
+  "_note": "This file is populated daily by the GitHub Actions scraper. The frontend will show seed data until the first scrape runs."
+}
