@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 JobFinder scraper — pulls creative, AI, game dev, and film jobs from:
-  - Remotive.io (free API)
-  - Jobicy.com (free API)
-  - Greenhouse.io (public company boards)
-  - Lever.co (public company boards)
-  - Arbeitnow (free API)
+  - Remotive.io  (free public API)
+  - Jobicy.com   (free public API)
+  - Greenhouse.io (verified public company boards)
+  - Lever.co      (verified public company boards)
+  - Arbeitnow     (free public API)
 
 Outputs: data/jobs.json
 """
@@ -15,7 +15,6 @@ import re
 import time
 import hashlib
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -42,7 +41,7 @@ CATEGORY_KEYWORDS = {
         "game producer", "game writer", "narrative designer", "narrative design",
         "qa tester", "game tester", "environment artist", "concept artist",
         "character artist", "vfx artist", "rigging", "animation director",
-        "live ops", "game economy", "esports", "game ui", "gamer",
+        "live ops", "game economy", "esports", "game ui",
     ],
     "ai_tech": [
         "ai ", "artificial intelligence", "machine learning", " ml ", "llm",
@@ -50,16 +49,14 @@ CATEGORY_KEYWORDS = {
         "generative ai", "deep learning", "computer vision", "diffusion",
         "data scientist", "ai researcher", "ai engineer", "ai artist",
         "ai product", "foundation model", "reinforcement learning",
-        "stable diffusion", "midjourney", "imagen", "gpt", "ai content",
-        "ai tools", "creative ai", "synthetic data",
+        "stable diffusion", "synthetic data", "ai content", "ai tools",
     ],
     "film": [
         "film", "vfx", "visual effects", "compositor", "compositing",
         "cinematograph", "production designer", "motion picture", "feature film",
-        "episodic", "animation director", "cg supervisor", "td ", "technical director",
+        "episodic", "animation director", "cg supervisor", "technical director",
         "lookdev", "lighting artist", "fx artist", "matte paint", "rotoscop",
-        "color grading", "colorist", "color scientist", "pipeline td",
-        "layout artist", "production coordinator film",
+        "color grading", "colorist", "pipeline td", "layout artist",
     ],
     "creative": [
         "creative director", "art director", "motion design", "motion graphic",
@@ -67,8 +64,7 @@ CATEGORY_KEYWORDS = {
         "3d artist", "3d generalist", "illustrator", "ui designer", "ux designer",
         "product designer", "interaction designer", "content creator",
         "copywriter", "creative strategist", "creative producer",
-        "video editor", "video producer", "social media creative",
-        "creative technologist", "experiential", "immersive",
+        "video editor", "video producer", "creative technologist",
     ],
 }
 
@@ -113,49 +109,54 @@ def is_relevant(title: str, description: str) -> bool:
 
 
 def extract_tags(title: str, description: str) -> list[str]:
-    """Heuristically extract skill keywords mentioned in the text."""
     SKILL_PATTERNS = [
-        "Python", "C++", "C#", "JavaScript", "TypeScript", "Rust", "Go",
+        "Python", "C++", "C#", "JavaScript", "TypeScript", "Rust",
         "Unity", "Unreal Engine", "Godot", "Blender", "Maya", "Houdini",
         "Nuke", "After Effects", "Cinema 4D", "ZBrush", "Substance",
         "Figma", "Photoshop", "Illustrator", "Premiere", "DaVinci Resolve",
-        "PyTorch", "TensorFlow", "JAX", "ONNX", "CUDA",
+        "PyTorch", "TensorFlow", "JAX", "CUDA",
         "AI", "Machine Learning", "LLM", "NLP", "VFX", "Motion Graphics",
         "3D", "Animation", "Rigging", "Compositing", "HLSL", "GLSL",
-        "Niagara", "Blueprints", "Perforce", "Git", "USD", "Husk",
-        "Remote", "Unreal", "Game Design", "Narrative", "Prompt Engineering",
-        "Generative AI", "Stable Diffusion", "LoRA",
+        "Niagara", "Blueprints", "USD",
+        "Game Design", "Narrative", "Prompt Engineering",
+        "Generative AI", "Stable Diffusion",
     ]
     text = title + " " + description
-    found = []
-    for skill in SKILL_PATTERNS:
-        if re.search(r'\b' + re.escape(skill) + r'\b', text, re.IGNORECASE):
-            found.append(skill)
-    return found[:10]
+    return [s for s in SKILL_PATTERNS
+            if re.search(r'\b' + re.escape(s) + r'\b', text, re.IGNORECASE)][:10]
 
 
 def strip_html(html: str) -> str:
     text = re.sub(r'<br\s*/?>', '\n', html, flags=re.IGNORECASE)
     text = re.sub(r'<[^>]+>', ' ', text)
-    text = re.sub(r'&amp;', '&', text)
-    text = re.sub(r'&lt;', '<', text)
-    text = re.sub(r'&gt;', '>', text)
-    text = re.sub(r'&nbsp;', ' ', text)
-    text = re.sub(r'&#39;', "'", text)
-    text = re.sub(r'&quot;', '"', text)
-    text = re.sub(r'\s{3,}', '\n\n', text)
-    return text.strip()
+    for entity, char in [('&amp;', '&'), ('&lt;', '<'), ('&gt;', '>'),
+                          ('&nbsp;', ' '), ('&#39;', "'"), ('&quot;', '"')]:
+        text = text.replace(entity, char)
+    return re.sub(r'\s{3,}', '\n\n', text).strip()
 
 
-def get(url: str, **kwargs) -> Optional[dict]:
+def get(url: str, **kwargs) -> Optional[dict | list]:
     try:
         r = SESSION.get(url, timeout=15, **kwargs)
         if r.status_code == 200:
             return r.json()
         log.warning("  %s → HTTP %s", url[:80], r.status_code)
     except Exception as e:
-        log.warning("  %s → %s", url[:80], e)
+        log.warning("  %s → %s", url[:80], type(e).__name__)
     return None
+
+
+def to_iso(val) -> str:
+    """Normalize a date value (string ISO or Unix timestamp int/float) to ISO string."""
+    if not val:
+        return ""
+    if isinstance(val, (int, float)):
+        try:
+            ts = val / 1000 if val > 1e10 else val  # handle ms vs s
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except Exception:
+            return ""
+    return str(val)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -179,7 +180,7 @@ def scrape_remotive() -> list[dict]:
     for category, search in REMOTIVE_SEARCHES:
         url = f"https://remotive.com/api/remote-jobs?category={category}&search={search}&limit=50"
         data = get(url)
-        if not data:
+        if not isinstance(data, dict):
             continue
         for j in data.get("jobs", []):
             jid = str(j.get("id", ""))
@@ -202,8 +203,8 @@ def scrape_remotive() -> list[dict]:
                 "url": j.get("url", ""),
                 "description": desc[:3000],
                 "tags": extract_tags(title, desc),
-                "posted_date": j.get("publication_date", ""),
-                "salary_range": j.get("salary", None),
+                "posted_date": to_iso(j.get("publication_date", "")),
+                "salary_range": j.get("salary") or None,
             })
         time.sleep(0.5)
     log.info("Remotive: %d jobs", len(jobs))
@@ -213,7 +214,7 @@ def scrape_remotive() -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 # SOURCE: JOBICY
 # ─────────────────────────────────────────────────────────────────────────────
-JOBICY_TAGS = ["ai", "game", "design", "creative", "animation", "vfx", "film", "video"]
+JOBICY_TAGS = ["game", "design", "creative", "animation", "vfx", "film", "video", "artificial-intelligence"]
 
 
 def scrape_jobicy() -> list[dict]:
@@ -222,7 +223,7 @@ def scrape_jobicy() -> list[dict]:
     for tag in JOBICY_TAGS:
         url = f"https://jobicy.com/api/v2/remote-jobs?count=50&tag={tag}"
         data = get(url)
-        if not data:
+        if not isinstance(data, dict):
             continue
         for j in data.get("jobs", []):
             jid = str(j.get("id", ""))
@@ -234,6 +235,8 @@ def scrape_jobicy() -> list[dict]:
             if not is_relevant(title, desc):
                 continue
             loc = j.get("jobGeo", "Remote")
+            sal_min = j.get("annualSalaryMin")
+            sal_max = j.get("annualSalaryMax")
             jobs.append({
                 "id": make_id(j.get("url", jid)),
                 "title": title,
@@ -245,9 +248,8 @@ def scrape_jobicy() -> list[dict]:
                 "url": j.get("url", ""),
                 "description": desc[:3000],
                 "tags": extract_tags(title, desc),
-                "posted_date": j.get("pubDate", ""),
-                "salary_range": j.get("annualSalaryMin") and
-                    f"${j['annualSalaryMin']:,}–${j.get('annualSalaryMax','?'):,}",
+                "posted_date": to_iso(j.get("pubDate", "")),
+                "salary_range": f"${sal_min:,}–${sal_max:,}" if sal_min and sal_max else None,
             })
         time.sleep(0.5)
     log.info("Jobicy: %d jobs", len(jobs))
@@ -255,49 +257,31 @@ def scrape_jobicy() -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE: GREENHOUSE
+# SOURCE: GREENHOUSE — verified slugs only
 # ─────────────────────────────────────────────────────────────────────────────
 GREENHOUSE_COMPANIES = {
     # Game Dev
-    "epicgames":          {"name": "Epic Games",          "cat": "game_dev"},
-    "riotgames":          {"name": "Riot Games",           "cat": "game_dev"},
-    "bungie":             {"name": "Bungie",               "cat": "game_dev"},
-    "roblox":             {"name": "Roblox",               "cat": "game_dev"},
-    "discord":            {"name": "Discord",              "cat": "game_dev"},
-    "unity-technologies": {"name": "Unity Technologies",   "cat": "game_dev"},
-    "niantic":            {"name": "Niantic",              "cat": "game_dev"},
-    "zynga":              {"name": "Zynga",                "cat": "game_dev"},
-    "scopely":            {"name": "Scopely",              "cat": "game_dev"},
-    "kabam":              {"name": "Kabam",                "cat": "game_dev"},
-    "moonactivegames":    {"name": "Moon Active",          "cat": "game_dev"},
-    "warnerbros":         {"name": "Warner Bros. Games",   "cat": "game_dev"},
-    "2k":                 {"name": "2K",                   "cat": "game_dev"},
-    "gearbox":            {"name": "Gearbox Software",     "cat": "game_dev"},
-    "techland":           {"name": "Techland",             "cat": "game_dev"},
-    "kingcom":            {"name": "King",                 "cat": "game_dev"},
-    "supercell":          {"name": "Supercell",            "cat": "game_dev"},
+    "epicgames":    {"name": "Epic Games",          "cat": "game_dev"},
+    "riotgames":    {"name": "Riot Games",           "cat": "game_dev"},
+    "bungie":       {"name": "Bungie",               "cat": "game_dev"},
+    "roblox":       {"name": "Roblox",               "cat": "game_dev"},
+    "discord":      {"name": "Discord",              "cat": "game_dev"},
+    "2k":           {"name": "2K",                   "cat": "game_dev"},
+    "scopely":      {"name": "Scopely",              "cat": "game_dev"},
+    "gearbox":      {"name": "Gearbox Software",     "cat": "game_dev"},
+    "naughtydog":   {"name": "Naughty Dog",          "cat": "game_dev"},
+    "twitch":       {"name": "Twitch",               "cat": "game_dev"},
+    "neteasegames": {"name": "NetEase Games",        "cat": "game_dev"},
+    "krafton":      {"name": "Krafton",              "cat": "game_dev"},
+    "unity3d":      {"name": "Unity Technologies",   "cat": "game_dev"},
+    "figma":        {"name": "Figma",                "cat": "creative"},
     # AI / Tech
-    "anthropic":          {"name": "Anthropic",            "cat": "ai_tech"},
-    "openai":             {"name": "OpenAI",               "cat": "ai_tech"},
-    "midjourney":         {"name": "Midjourney",           "cat": "ai_tech"},
-    "adobe":              {"name": "Adobe",                "cat": "ai_tech"},
-    "nvidia":             {"name": "NVIDIA",               "cat": "ai_tech"},
-    "huggingface":        {"name": "Hugging Face",         "cat": "ai_tech"},
-    "runway":             {"name": "Runway",               "cat": "ai_tech"},
-    "stability":          {"name": "Stability AI",         "cat": "ai_tech"},
-    "elevenlabs":         {"name": "ElevenLabs",           "cat": "ai_tech"},
-    "pika-labs":          {"name": "Pika",                 "cat": "ai_tech"},
-    "ideogram-ai":        {"name": "Ideogram",             "cat": "ai_tech"},
-    # Creative / Film
-    "netflix":            {"name": "Netflix",              "cat": "film"},
-    "pixar":              {"name": "Pixar",                "cat": "film"},
-    "dreamworks":         {"name": "DreamWorks Animation", "cat": "film"},
-    "ilm":                {"name": "ILM",                  "cat": "film"},
-    "dneg":               {"name": "DNEG",                 "cat": "film"},
-    "weta":               {"name": "Weta FX",              "cat": "film"},
-    # Dallas-area tech
-    "at-t":               {"name": "AT&T",                 "cat": "ai_tech"},
-    "gamestop":           {"name": "GameStop",             "cat": "game_dev"},
+    "anthropic":    {"name": "Anthropic",            "cat": "ai_tech"},
+    "stabilityai":  {"name": "Stability AI",         "cat": "ai_tech"},
+    "scaleai":      {"name": "Scale AI",             "cat": "ai_tech"},
+    "togetherai":   {"name": "Together AI",          "cat": "ai_tech"},
+    # Film / VFX
+    "foundry":      {"name": "Foundry (VFX Tools)",  "cat": "film"},
 }
 
 
@@ -306,7 +290,7 @@ def scrape_greenhouse() -> list[dict]:
     for slug, meta in GREENHOUSE_COMPANIES.items():
         url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
         data = get(url)
-        if not data:
+        if not isinstance(data, dict):
             time.sleep(0.3)
             continue
         for j in data.get("jobs", []):
@@ -314,19 +298,20 @@ def scrape_greenhouse() -> list[dict]:
             desc = strip_html(j.get("content", ""))
             if not is_relevant(title, desc):
                 continue
-            loc_raw = j.get("location", {}).get("name", "") or ""
+            loc_raw = (j.get("location") or {}).get("name", "") or ""
+            cat = categorize(title, desc)
             jobs.append({
                 "id": make_id(j.get("absolute_url", str(j.get("id", "")))),
                 "title": title,
                 "company": meta["name"],
                 "location": loc_raw,
                 "location_type": location_type(loc_raw, desc),
-                "category": categorize(title, desc) if categorize(title, desc) != "other" else meta["cat"],
+                "category": cat if cat != "other" else meta["cat"],
                 "source": "greenhouse",
                 "url": j.get("absolute_url", ""),
                 "description": desc[:3000],
                 "tags": extract_tags(title, desc),
-                "posted_date": j.get("updated_at", ""),
+                "posted_date": to_iso(j.get("updated_at", "")),
                 "salary_range": None,
             })
         time.sleep(0.4)
@@ -335,31 +320,10 @@ def scrape_greenhouse() -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE: LEVER
+# SOURCE: LEVER — verified slugs only
 # ─────────────────────────────────────────────────────────────────────────────
 LEVER_COMPANIES = {
-    "respawn":            {"name": "Respawn Entertainment", "cat": "game_dev"},
-    "ea":                 {"name": "Electronic Arts",       "cat": "game_dev"},
-    "naughty-dog":        {"name": "Naughty Dog",           "cat": "game_dev"},
-    "insomniacgames":     {"name": "Insomniac Games",       "cat": "game_dev"},
-    "sledgehammergames":  {"name": "Sledgehammer Games",    "cat": "game_dev"},
-    "highmoonstudios":    {"name": "High Moon Studios",     "cat": "game_dev"},
-    "treyarch":           {"name": "Treyarch",              "cat": "game_dev"},
-    "obsidian":           {"name": "Obsidian Entertainment","cat": "game_dev"},
-    "doublefine":         {"name": "Double Fine",           "cat": "game_dev"},
-    "square-enix-na":     {"name": "Square Enix NA",        "cat": "game_dev"},
-    "nexon":              {"name": "Nexon",                  "cat": "game_dev"},
-    "ubisoft":            {"name": "Ubisoft",               "cat": "game_dev"},
-    # AI / Creative
-    "cohere":             {"name": "Cohere",                "cat": "ai_tech"},
-    "adept":              {"name": "Adept",                 "cat": "ai_tech"},
-    "character-ai":       {"name": "Character.AI",          "cat": "ai_tech"},
-    "typeface":           {"name": "Typeface",              "cat": "ai_tech"},
-    "photoroom":          {"name": "Photoroom",             "cat": "ai_tech"},
-    # Film
-    "framestore":         {"name": "Framestore",            "cat": "film"},
-    "method-studios":     {"name": "Method Studios",        "cat": "film"},
-    "scanline-vfx":       {"name": "Scanline VFX",          "cat": "film"},
+    "skydance":  {"name": "Skydance Media",  "cat": "film"},
 }
 
 
@@ -368,16 +332,16 @@ def scrape_lever() -> list[dict]:
     for slug, meta in LEVER_COMPANIES.items():
         url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
         data = get(url)
-        if not data or not isinstance(data, list):
+        if not isinstance(data, list):
             time.sleep(0.3)
             continue
         for j in data:
             title = j.get("text", "")
-            desc_parts = j.get("descriptionPlain", "") or ""
-            desc = strip_html(desc_parts)[:3000]
+            desc = strip_html(j.get("descriptionPlain") or j.get("description") or "")[:3000]
             if not is_relevant(title, desc):
                 continue
-            loc_raw = j.get("categories", {}).get("location", "") or j.get("workplaceType", "")
+            loc_raw = (j.get("categories") or {}).get("location", "") or j.get("workplaceType", "")
+            created = j.get("createdAt", 0)
             jobs.append({
                 "id": make_id(j.get("hostedUrl", j.get("id", ""))),
                 "title": title,
@@ -389,9 +353,7 @@ def scrape_lever() -> list[dict]:
                 "url": j.get("hostedUrl", ""),
                 "description": desc,
                 "tags": extract_tags(title, desc),
-                "posted_date": datetime.fromtimestamp(
-                    j.get("createdAt", 0) / 1000, tz=timezone.utc
-                ).isoformat() if j.get("createdAt") else "",
+                "posted_date": to_iso(created),
                 "salary_range": None,
             })
         time.sleep(0.4)
@@ -400,14 +362,13 @@ def scrape_lever() -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE: ARBEITNOW (remote-first, EU + US)
+# SOURCE: ARBEITNOW
 # ─────────────────────────────────────────────────────────────────────────────
 def scrape_arbeitnow() -> list[dict]:
     jobs = []
-    url = "https://www.arbeitnow.com/api/job-board-api?page=1"
     for page in range(1, 4):
         data = get(f"https://www.arbeitnow.com/api/job-board-api?page={page}")
-        if not data:
+        if not isinstance(data, dict):
             break
         for j in data.get("data", []):
             title = j.get("title", "")
@@ -425,8 +386,8 @@ def scrape_arbeitnow() -> list[dict]:
                 "source": "arbeitnow",
                 "url": j.get("url", ""),
                 "description": desc[:3000],
-                "tags": extract_tags(title, desc) + j.get("tags", [])[:5],
-                "posted_date": j.get("created_at", ""),
+                "tags": extract_tags(title, desc) + (j.get("tags") or [])[:5],
+                "posted_date": to_iso(j.get("created_at", "")),
                 "salary_range": None,
             })
         time.sleep(0.5)
@@ -435,17 +396,16 @@ def scrape_arbeitnow() -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DEDUPLICATION
+# DEDUPLICATION & SORT
 # ─────────────────────────────────────────────────────────────────────────────
 def dedup(jobs: list[dict]) -> list[dict]:
     seen = set()
-    out = []
-    for j in jobs:
-        key = j["id"]
-        if key not in seen:
-            seen.add(key)
-            out.append(j)
-    return out
+    return [j for j in jobs if not (j["id"] in seen or seen.add(j["id"]))]
+
+
+def sort_key(j: dict) -> str:
+    d = j.get("posted_date") or ""
+    return str(d)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -453,7 +413,7 @@ def dedup(jobs: list[dict]) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
     log.info("=== JobFinder Scraper starting ===")
-    all_jobs = []
+    all_jobs: list[dict] = []
 
     log.info("Scraping Remotive…")
     all_jobs += scrape_remotive()
@@ -471,11 +431,12 @@ def main():
     all_jobs += scrape_arbeitnow()
 
     all_jobs = dedup(all_jobs)
-    all_jobs.sort(key=lambda j: j.get("posted_date", ""), reverse=True)
+    all_jobs.sort(key=sort_key, reverse=True)
 
-    source_counts = {}
+    source_counts: dict[str, int] = {}
     for j in all_jobs:
-        source_counts[j["source"]] = source_counts.get(j["source"], 0) + 1
+        src = j["source"]
+        source_counts[src] = source_counts.get(src, 0) + 1
 
     output = {
         "last_updated": datetime.now(timezone.utc).isoformat(),
